@@ -8,12 +8,30 @@ on:
 jobs:
   build-local:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nir_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nir_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nir_test
+      JWT_SECRET: ci-test-secret
+      NODE_ENV: production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Deterministic dependency installation using committed package-lock.json
       - name: Verify Node and npm
         run: |
           node --version
@@ -24,8 +42,43 @@ jobs:
 
       - name: Build web
         run: npm run build:web
-        env:
-          NODE_ENV: production
+
+      - name: Bundle production server
+        run: |
+          npx esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --external:pg-native --external:vite --sourcemap --outfile=dist/server.cjs
+
+      - name: Apply real PostgreSQL schema
+        run: npm run db:migrate
+
+      - name: Run API tests
+        run: npm test
+
+      - name: Real PostgreSQL production smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          node dist/server.cjs > /tmp/nir-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+
+          for i in {1..50}; do
+            if curl -fsS http://127.0.0.1:4001/api/health >/tmp/health.json; then
+              break
+            fi
+            sleep 0.2
+          done
+
+          test "$(node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync('/tmp/health.json')); process.stdout.write(String(x.service))")" = "nir-production"
+
+          curl -fsS http://127.0.0.1:4001/ >/tmp/index.html
+          grep -q '<html' /tmp/index.html
+
+          ASSET=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/index.html | head -1 | sed 's/src="//;s/"//')
+          test -n "$ASSET"
+          curl -fsS "http://127.0.0.1:4001${ASSET}" >/tmp/app.js
+          test -s /tmp/app.js
+
+          echo "Real PostgreSQL production smoke test passed."
 
       - name: Bundle server and prepare portable Windows runtime
         shell: bash
@@ -34,8 +87,7 @@ jobs:
           rm -rf release runtime-temp node-win.zip
           mkdir -p release/dist release/runtime
           cp -R dist/. release/dist/
-
-          npx esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --external:pg-native --external:vite --sourcemap --outfile=release/server.cjs
+          cp dist/server.cjs release/server.cjs
 
           NODE_VERSION="$(node -p 'process.versions.node')"
           echo "Preparing portable Node.js runtime ${NODE_VERSION}"
@@ -99,9 +151,30 @@ jobs:
           set -euo pipefail
           node --check release/server.cjs
           test -f release/dist/index.html
+          test -f release/dist/server.cjs
           test -f release/runtime/node.exe
           test -f release/start-nir.bat
           test -f release/install-nir.bat
+
+      - name: Portable runtime smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=4002 release/runtime/node.exe release/server.cjs > /tmp/nir-portable.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+
+          for i in {1..50}; do
+            if curl -fsS http://127.0.0.1:4002/api/health >/tmp/portable-health.json; then
+              break
+            fi
+            sleep 0.2
+          done
+
+          test "$(node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync('/tmp/portable-health.json')); process.stdout.write(String(x.service))")" = "nir-production"
+          curl -fsS http://127.0.0.1:4002/ >/tmp/portable-index.html
+          grep -q '<html' /tmp/portable-index.html
+          echo "Portable Windows server smoke test passed."
 
       - name: Upload portable Windows package
         uses: actions/upload-artifact@v4
