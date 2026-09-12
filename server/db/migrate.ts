@@ -18,7 +18,6 @@ export async function runMigrations() {
   try {
     await client.query('BEGIN');
 
-    // Users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -31,7 +30,6 @@ export async function runMigrations() {
       );
     `);
 
-    // Sessions table
     await client.query(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
@@ -47,7 +45,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
     `);
 
-    // Settings table
     await client.query(`
       CREATE TABLE IF NOT EXISTS settings (
         id TEXT PRIMARY KEY,
@@ -56,7 +53,6 @@ export async function runMigrations() {
       );
     `);
 
-    // Product Categories table
     await client.query(`
       CREATE TABLE IF NOT EXISTS product_categories (
         id TEXT PRIMARY KEY,
@@ -68,7 +64,6 @@ export async function runMigrations() {
       );
     `);
 
-    // Products table
     await client.query(`
       CREATE TABLE IF NOT EXISTS products (
         id TEXT PRIMARY KEY,
@@ -88,7 +83,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS products_type_idx ON products(type);
     `);
 
-    // Warehouses table
     await client.query(`
       CREATE TABLE IF NOT EXISTS warehouses (
         id TEXT PRIMARY KEY,
@@ -104,7 +98,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS warehouses_name_idx ON warehouses(name);
     `);
 
-    // Farmers table
     await client.query(`
       CREATE TABLE IF NOT EXISTS farmers (
         id TEXT PRIMARY KEY,
@@ -119,7 +112,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS farmers_name_idx ON farmers(name);
     `);
 
-    // Drivers table
     await client.query(`
       CREATE TABLE IF NOT EXISTS drivers (
         id TEXT PRIMARY KEY,
@@ -133,7 +125,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS drivers_name_idx ON drivers(name);
     `);
 
-    // Origins table
     await client.query(`
       CREATE TABLE IF NOT EXISTS origins (
         id TEXT PRIMARY KEY,
@@ -144,7 +135,6 @@ export async function runMigrations() {
       );
     `);
 
-    // Invoices table (Entry & Exit Remittances)
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
         id TEXT PRIMARY KEY,
@@ -183,7 +173,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS invoices_farmer_id_idx ON invoices(farmer_id);
     `);
 
-    // Batches table
     await client.query(`
       CREATE TABLE IF NOT EXISTS batches (
         id TEXT PRIMARY KEY,
@@ -203,7 +192,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS batches_batch_number_idx ON batches(batch_number);
     `);
 
-    // Formulas table
     await client.query(`
       CREATE TABLE IF NOT EXISTS formulas (
         id TEXT PRIMARY KEY,
@@ -216,7 +204,6 @@ export async function runMigrations() {
       );
     `);
 
-    // Formula items table
     await client.query(`
       CREATE TABLE IF NOT EXISTS formula_items (
         id TEXT PRIMARY KEY,
@@ -231,7 +218,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS formula_items_product_id_idx ON formula_items(product_id);
     `);
 
-    // Production Records table
     await client.query(`
       CREATE TABLE IF NOT EXISTS production_records (
         id TEXT PRIMARY KEY,
@@ -247,7 +233,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS production_records_date_idx ON production_records(date);
     `);
 
-    // Inventory Adjustments table
     await client.query(`
       CREATE TABLE IF NOT EXISTS inventory_adjustments (
         id TEXT PRIMARY KEY,
@@ -261,7 +246,6 @@ export async function runMigrations() {
       );
     `);
 
-    // Inventory Transactions table
     await client.query(`
       CREATE TABLE IF NOT EXISTS inventory_transactions (
         id TEXT PRIMARY KEY,
@@ -281,7 +265,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS inventory_tx_date_idx ON inventory_transactions(date);
     `);
 
-    // Logs table (Audit trail)
     await client.query(`
       CREATE TABLE IF NOT EXISTS logs (
         id TEXT PRIMARY KEY,
@@ -298,7 +281,6 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS logs_type_idx ON logs(type);
     `);
 
-    // Sync Mutations table
     await client.query(`
       CREATE TABLE IF NOT EXISTS sync_mutations (
         id TEXT PRIMARY KEY,
@@ -322,7 +304,7 @@ export async function runMigrations() {
   }
 }
 
-if (process.argv[1] && process.argv[1].endsWith('migrate.ts')) {
+if (require.main === module) {
   runMigrations()
     .then(() => process.exit(0))
     .catch(() => process.exit(1));
