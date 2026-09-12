@@ -112,12 +112,10 @@ app.post("/api/extract", apiRateLimiter, requireAuth, async (req, res) => {
   }
 });
 
-// Explicit API 404 Handler - Never return HTML for unmatched API endpoints
 app.all(/^\/api\/.*/, (req, res) => {
   res.status(404).json({ success: false, error: "API endpoint not found", path: req.originalUrl });
 });
 
-// Global Centralized Error Handler
 const errorHandler = (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[NIR Server Error]', err);
   const status = err.status || err.statusCode || 500;
@@ -130,6 +128,23 @@ const errorHandler = (err: any, _req: express.Request, res: express.Response, _n
 
 let httpServer: ReturnType<typeof app.listen> | null = null;
 
+function resolveFrontendRoot(runtimeDir: string): string {
+  const explicit = process.env.NIR_DIST_PATH?.trim();
+  const candidates = explicit
+    ? [path.resolve(explicit)]
+    : [runtimeDir, path.join(runtimeDir, 'dist')];
+
+  const frontendRoot = candidates.find(candidate =>
+    fs.existsSync(path.join(candidate, 'index.html')) &&
+    fs.existsSync(path.join(candidate, 'assets'))
+  );
+
+  if (!frontendRoot) {
+    throw new Error(`NIR frontend not found. Checked: ${candidates.join(', ')}`);
+  }
+  return frontendRoot;
+}
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const viteModule = 'vite';
@@ -138,21 +153,13 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const runtimeDir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(process.argv[1] || process.cwd());
-    const distPath = path.resolve(process.env.NIR_DIST_PATH || runtimeDir);
+    const distPath = resolveFrontendRoot(runtimeDir);
     const indexPath = path.join(distPath, 'index.html');
     const assetsPath = path.join(distPath, 'assets');
-
-    if (!fs.existsSync(indexPath)) {
-      throw new Error(`NIR frontend not found: ${indexPath}`);
-    }
-    if (!fs.existsSync(assetsPath)) {
-      throw new Error(`NIR assets directory not found: ${assetsPath}`);
-    }
 
     console.log(`[NIR] Frontend root: ${distPath}`);
     console.log(`[NIR] Assets root: ${assetsPath}`);
 
-    // Serve built assets directly. No custom MIME hook and no SPA fallback here.
     app.use('/assets', express.static(assetsPath, {
       fallthrough: false,
       immutable: true,
@@ -164,15 +171,12 @@ async function startServer() {
       fallthrough: true,
     }));
 
-    // Only browser application routes reach the SPA fallback.
     app.get(/^(?!\/api(?:\/|$)|\/uploads(?:\/|$)|\/assets(?:\/|$)).*$/, (_req, res) => {
       res.sendFile(indexPath);
     });
   }
 
-  // 404 for assets
   app.use('/assets', (req, res) => res.status(404).send('Asset not found'));
-
   app.use(errorHandler);
 
   httpServer = app.listen(PORT, "0.0.0.0", () => console.log(`Server running on http://0.0.0.0:${PORT}`));
