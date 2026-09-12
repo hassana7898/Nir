@@ -27,59 +27,47 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nir_test
       JWT_SECRET: ci-test-secret
       NODE_ENV: production
+      PORT: 4001
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Verify Node and npm
         run: |
           node --version
           npm --version
-
       - name: Install dependencies with npm ci
         run: npm ci --legacy-peer-deps
-
       - name: Build web
         run: npm run build:web
-
       - name: Bundle production server
-        run: |
-          npx esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --external:pg-native --external:vite --sourcemap --outfile=dist/server.cjs
-
+        run: npx esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --external:pg-native --external:vite --sourcemap --outfile=dist/server.cjs
       - name: Apply real PostgreSQL schema
         run: npm run db:migrate
-
       - name: Run API tests
         run: npm test
-
       - name: Real PostgreSQL production smoke test
         shell: bash
         run: |
           set -euo pipefail
+          rm -f /tmp/health.json /tmp/index.html /tmp/app.js /tmp/nir-server.log
           node dist/server.cjs > /tmp/nir-server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
-
+          HEALTH_OK=false
           for i in {1..50}; do
-            if curl -fsS http://127.0.0.1:4001/api/health >/tmp/health.json; then
-              break
-            fi
+            if curl -fsS http://127.0.0.1:4001/api/health >/tmp/health.json; then HEALTH_OK=true; break; fi
             sleep 0.2
           done
-
-          test "$(node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync('/tmp/health.json')); process.stdout.write(String(x.service))")" = "nir-production"
-
+          if [ "$HEALTH_OK" != "true" ]; then cat /tmp/nir-server.log || true; exit 1; fi
+          test "$(node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/health.json'));process.stdout.write(String(x.service))")" = "nir-production"
           curl -fsS http://127.0.0.1:4001/ >/tmp/index.html
           grep -q '<html' /tmp/index.html
-
           ASSET=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/index.html | head -1 | sed 's/src="//;s/"//')
           test -n "$ASSET"
           curl -fsS "http://127.0.0.1:4001${ASSET}" >/tmp/app.js
           test -s /tmp/app.js
-
           echo "Real PostgreSQL production smoke test passed."
-
       - name: Bundle server and prepare portable Windows runtime
         shell: bash
         run: |
@@ -88,40 +76,22 @@ jobs:
           mkdir -p release/dist release/runtime
           cp -R dist/. release/dist/
           cp dist/server.cjs release/server.cjs
-
           NODE_VERSION="$(node -p 'process.versions.node')"
-          echo "Preparing portable Node.js runtime ${NODE_VERSION}"
-          curl --fail --location --retry 3 --retry-delay 2 \
-            "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip" \
-            --output node-win.zip
+          curl --fail --location --retry 3 --retry-delay 2 "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip" --output node-win.zip
           unzip -q node-win.zip -d runtime-temp
           cp -R "runtime-temp/node-v${NODE_VERSION}-win-x64/." release/runtime/
           rm -rf runtime-temp node-win.zip
-
           cat > release/start-nir.bat <<'EOF'
           @echo off
           setlocal
           cd /d "%~dp0"
-          if not exist "%~dp0runtime\node.exe" (
-            echo NIR portable Node runtime was not found.
-            pause
-            exit /b 1
-          )
-          if not exist "%~dp0server.cjs" (
-            echo NIR server package was not found.
-            pause
-            exit /b 1
-          )
-          if not exist "%~dp0.env" (
-            copy /y "%~dp0.env.example" "%~dp0.env" >nul
-            echo .env was created from .env.example.
-            echo Configure DATABASE_URL before starting NIR.
-          )
+          if not exist "%~dp0runtime\node.exe" (echo NIR portable Node runtime was not found.&pause&exit /b 1)
+          if not exist "%~dp0server.cjs" (echo NIR server package was not found.&pause&exit /b 1)
+          if not exist "%~dp0.env" copy /y "%~dp0.env.example" "%~dp0.env" >nul
           set NODE_ENV=production
           "%~dp0runtime\node.exe" "%~dp0server.cjs"
           pause
           EOF
-
           cat > release/install-nir.bat <<'EOF'
           @echo off
           setlocal
@@ -132,7 +102,6 @@ jobs:
           echo Start it with %TARGET%\start-nir.bat
           pause
           EOF
-
           cp .env.example release/.env.example
           cat > release/README.txt <<'EOF'
           NIR - Portable Windows Local Server
@@ -144,7 +113,6 @@ jobs:
           This package does not require npm, npm install, or node_modules on the factory PC.
           The Node.js Windows runtime is included in the package.
           EOF
-
       - name: Validate portable package
         shell: bash
         run: |
@@ -155,27 +123,24 @@ jobs:
           test -f release/runtime/node.exe
           test -f release/start-nir.bat
           test -f release/install-nir.bat
-
       - name: Portable runtime smoke test
         shell: bash
         run: |
           set -euo pipefail
+          rm -f /tmp/portable-health.json /tmp/portable-index.html /tmp/nir-portable.log
           PORT=4002 release/runtime/node.exe release/server.cjs > /tmp/nir-portable.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
-
+          HEALTH_OK=false
           for i in {1..50}; do
-            if curl -fsS http://127.0.0.1:4002/api/health >/tmp/portable-health.json; then
-              break
-            fi
+            if curl -fsS http://127.0.0.1:4002/api/health >/tmp/portable-health.json; then HEALTH_OK=true; break; fi
             sleep 0.2
           done
-
-          test "$(node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync('/tmp/portable-health.json')); process.stdout.write(String(x.service))")" = "nir-production"
+          if [ "$HEALTH_OK" != "true" ]; then cat /tmp/nir-portable.log || true; exit 1; fi
+          test "$(node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/portable-health.json'));process.stdout.write(String(x.service))")" = "nir-production"
           curl -fsS http://127.0.0.1:4002/ >/tmp/portable-index.html
           grep -q '<html' /tmp/portable-index.html
           echo "Portable Windows server smoke test passed."
-
       - name: Upload portable Windows package
         uses: actions/upload-artifact@v4
         with:
