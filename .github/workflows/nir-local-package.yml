@@ -59,13 +59,14 @@ jobs:
           rm -rf release runtime-temp node-win.zip
           mkdir -p release/dist runtime-temp
           cp -R dist/. release/dist/
+          cp release/dist/server.cjs release/server.cjs
           cp .env.example release/.env.example
           NODE_VERSION="$(node -p 'process.versions.node')"
           curl --fail --location --retry 3 --retry-delay 2 "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip" --output node-win.zip
           unzip -q node-win.zip -d runtime-temp
           mkdir -p release/runtime
           cp -R "runtime-temp/node-v${NODE_VERSION}-win-x64/." release/runtime/
-          rm -rf runtime-temp node-win.zip
+          rm -rf runtime-temp node-win.zip release/dist/server.cjs release/dist/server.cjs.map
           cat > release/start-nir.bat <<'EOF'
           @echo off
           setlocal
@@ -108,7 +109,9 @@ jobs:
           node --check release/server.cjs
           test -f release/dist/index.html
           test -d release/dist/assets
+          test -f release/server.cjs
           test -f release/runtime/node.exe
+          test ! -f release/dist/server.cjs
           test ! -f release/index.html
       - name: Test portable package with Linux runtime
         shell: bash
