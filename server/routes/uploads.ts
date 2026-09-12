@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 
 const router = express.Router();
 
-const uploadsDir = path.join(process.cwd(), 'data', 'uploads');
+const uploadsDir = path.resolve(process.env.UPLOAD_DIR || process.env.NIR_UPLOADS_PATH || path.join(process.cwd(), 'data', 'uploads'));
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -52,7 +52,7 @@ router.get('/:filename', (req, res) => {
     return res.status(404).json({ error: 'File not found.' });
   }
 
-  res.sendFile(filePath);
+  res.sendFile(safeFilename, { root: uploadsDir });
 });
 
 export default router;

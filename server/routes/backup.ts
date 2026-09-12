@@ -27,13 +27,14 @@ router.post('/', requireRole('ADMIN'), async (_req, res) => {
 // GET /api/backup/download/:filename - Download backup
 router.get('/download/:filename', requireRole('ADMIN'), (req, res) => {
   const safeFilename = path.basename(String(req.params.filename));
-  const filePath = path.join(process.cwd(), 'backups', safeFilename);
+  const backupDir = path.resolve(process.env.BACKUP_DIR || path.join(process.cwd(), 'data', 'backups'));
+  const filePath = path.join(backupDir, safeFilename);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'Backup file not found.' });
   }
 
-  res.download(filePath, safeFilename);
+  res.download(safeFilename, safeFilename, { root: backupDir });
 });
 
 // POST /api/backup/restore - Restore from JSON backup payload

@@ -10,8 +10,15 @@ const databaseUrl = (process.env.DATABASE_URL || '').trim();
 let realPool: Pool | null = null;
 let drizzleDb: any = null;
 
-if (process.env.E2E_TEST === 'true') {
-  console.log('[NIR DB] E2E DB Mock Enabled');
+const e2eTestRequested = process.env.E2E_TEST === 'true';
+const isProductionEnv = process.env.NODE_ENV === 'production';
+
+if (e2eTestRequested && isProductionEnv) {
+  console.error('[NIR DB FATAL] E2E_TEST mock database is FORBIDDEN in production. Ignoring mock; PostgreSQL remains authoritative.');
+}
+
+if (e2eTestRequested && !isProductionEnv) {
+  console.log('[NIR DB] E2E DB Mock Enabled (non-production only)');
   const mockUsers = [];
   const mockQueryObj = (method, args) => {
     let q = {
@@ -114,7 +121,7 @@ export const pool = realPool || ({
 } as unknown as Pool);
 
 export const checkDbHealth = async (): Promise<{ status: 'connected' | 'disconnected'; engine: string; error?: string }> => {
-  if (process.env.E2E_TEST === 'true') return { status: 'connected', engine: 'postgresql' };
+  if (process.env.E2E_TEST === 'true' && process.env.NODE_ENV !== 'production') return { status: 'connected', engine: 'postgresql' };
   if (!realPool) {
     return {
       status: 'disconnected',

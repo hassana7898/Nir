@@ -1,25 +1,51 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { db } from '../db';
 import * as schema from '../db/schema';
 
+// Resolve PostgreSQL client tools (pg_dump/pg_restore). Prefers an explicit
+// PG_BIN, then a standard Windows install, then the NIR portable PostgreSQL.
+const resolvePgBin = (): string | null => {
+  const candidates: string[] = [];
+  if (process.env.PG_BIN) candidates.push(process.env.PG_BIN);
+  for (const base of ['C:\\Program Files\\PostgreSQL', 'C:\\Program Files (x86)\\PostgreSQL']) {
+    try {
+      for (const entry of fs.readdirSync(base)) candidates.push(path.join(base, entry, 'bin'));
+    } catch { /* ignore */ }
+  }
+  const cwd = process.cwd();
+  candidates.push(path.join(cwd, 'pgsql', 'bin'), path.join(cwd, '..', 'pgsql', 'bin'));
+  for (const dir of candidates) {
+    try {
+      if (fs.existsSync(path.join(dir, 'pg_dump.exe')) || fs.existsSync(path.join(dir, 'pg_dump'))) return dir;
+    } catch { /* ignore */ }
+  }
+  return null;
+};
+
+export const pgDumpPath = (): string => {
+  const bin = resolvePgBin();
+  if (!bin) return 'pg_dump';
+  return path.join(bin, fs.existsSync(path.join(bin, 'pg_dump.exe')) ? 'pg_dump.exe' : 'pg_dump');
+};
+
 export const backupDatabase = async (): Promise<{ filePath: string; fileName: string; format: 'sql' | 'json'; sizeBytes: number }> => {
   const date = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupDir = path.join(process.cwd(), 'backups');
+  const backupDir = path.resolve(process.env.BACKUP_DIR || path.join(process.cwd(), 'data', 'backups'));
 
   if (!fs.existsSync(backupDir)) {
     fs.mkdirSync(backupDir, { recursive: true });
   }
 
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
-    const fileName = `backup-${date}.sql`;
+    const fileName = `backup-${date}.dump`;
     const filePath = path.join(backupDir, fileName);
-    const command = `pg_dump "${process.env.DATABASE_URL}" -F c -f "${filePath}"`;
+    const pgDump = pgDumpPath();
 
     try {
       await new Promise<string>((resolve, reject) => {
-        exec(command, (error, _stdout, stderr) => {
+        execFile(pgDump, ['-F', 'c', '--no-owner', '--no-privileges', '-f', filePath, process.env.DATABASE_URL as string], (error, _stdout, stderr) => {
           if (error) {
             console.warn(`pg_dump failed (${error.message}), falling back to structured JSON backup`);
             return reject(error);

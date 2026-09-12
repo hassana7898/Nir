@@ -33,7 +33,7 @@ app.use(corsMiddleware);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-const uploadsPath = path.resolve(process.env.NIR_UPLOADS_PATH || path.join(process.cwd(), 'data', 'uploads'));
+const uploadsPath = path.resolve(process.env.UPLOAD_DIR || process.env.NIR_UPLOADS_PATH || path.join(process.cwd(), 'data', 'uploads'));
 app.use('/uploads', express.static(uploadsPath));
 
 app.get("/api/health", async (_req, res) => {
@@ -154,7 +154,6 @@ async function startServer() {
   } else {
     const runtimeDir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(process.argv[1] || process.cwd());
     const distPath = resolveFrontendRoot(runtimeDir);
-    const indexPath = path.join(distPath, 'index.html');
     const assetsPath = path.join(distPath, 'assets');
 
     console.log(`[NIR] Frontend root: ${distPath}`);
@@ -172,7 +171,7 @@ async function startServer() {
     }));
 
     app.get(/^(?!\/api(?:\/|$)|\/uploads(?:\/|$)|\/assets(?:\/|$)).*$/, (_req, res) => {
-      res.sendFile(indexPath);
+      res.sendFile('index.html', { root: distPath });
     });
   }
 

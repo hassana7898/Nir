@@ -1,18 +1,31 @@
+# =============================================================================
+# NIR server supervisor - keeps the production server running.
+# Started at boot by the "NIR Factory Server" scheduled task (SYSTEM).
+# =============================================================================
 $ErrorActionPreference = 'Stop'
-$Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-Set-Location $Root
+. (Join-Path $PSScriptRoot '_nir-common.ps1')
 
-if (-not (Test-Path '.\.env')) { throw 'C:\NIR\.env is missing. Run INSTALL-ONLINE.ps1 first.' }
-$envFile = Get-Content '.\.env' | Where-Object { $_ -match '^\s*([^#][^=]*)=(.*)$' }
-foreach ($line in $envFile) {
-  if ($line -match '^\s*([^#][^=]*)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2], 'Process') }
-}
+$Root = Resolve-NirRoot -Start $PSScriptRoot
+Set-Location $Root
+$envMap = Import-NirEnv -Root $Root
 $env:NIR_DIST_PATH = Join-Path $Root 'dist'
 $env:NODE_ENV = 'production'
-$env:PORT = if ($env:PORT) { $env:PORT } else { '3000' }
+if (-not $env:PORT) { $env:PORT = '3000' }
+
+$logDir = Join-Path $Root 'logs'
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$logFile = Join-Path $logDir 'nir-server.log'
+$nodeExe = Join-Path $Root 'runtime\node.exe'
+$serverJs = Join-Path $Root 'server.cjs'
 
 while ($true) {
-  & '.\runtime\node.exe' '.\server.cjs'
-  $exit = $LASTEXITCODE
+  try {
+    Add-Content -Path $logFile -Value ((Get-Date).ToString('s') + '  starting NIR server') -Encoding UTF8
+    & $nodeExe $serverJs *>> $logFile
+    $code = $LASTEXITCODE
+    Add-Content -Path $logFile -Value ((Get-Date).ToString('s') + '  NIR server exited with code ' + $code) -Encoding UTF8
+  } catch {
+    Add-Content -Path $logFile -Value ((Get-Date).ToString('s') + '  supervisor error: ' + $_.Exception.Message) -Encoding UTF8
+  }
   Start-Sleep -Seconds 5
 }

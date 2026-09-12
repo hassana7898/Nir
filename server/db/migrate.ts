@@ -304,7 +304,10 @@ export async function runMigrations() {
   }
 }
 
-if (require.main === module) {
+// Execute when run directly, either as TS (tsx server/db/migrate.ts) or as the
+// bundled CommonJS entry (node db-migrate.cjs). Works under both ESM and CJS.
+const entry = process.argv[1] || '';
+if (/(?:^|[\\/])(?:db[-_])?migrate\.(?:ts|cjs|mjs|js)$/.test(entry)) {
   runMigrations()
     .then(() => process.exit(0))
     .catch(() => process.exit(1));

@@ -2,9 +2,33 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+
+# Environment / secrets (NEVER commit)
 .env
 .env.*
 !.env.example
-.DS_Store
-backups/
+.npmrc
+
+# Build & release artifacts
+release/
+runtime/
+runtime-temp/
+*.zip
+*.log
 server/db/migrations/
+
+# Runtime data (database dumps, uploads, backups, local config)
+data/
+backups/
+
+# Internet exposure / TLS / DDNS local state (contains credentials)
+.internet/
+certs/
+*.pem
+*.pfx
+Caddyfile.local
+internet.config.json
+ddns.config.json
+
+.DS_Store
+Thumbs.db

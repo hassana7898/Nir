@@ -1,79 +1,74 @@
-# راهنمای نصب و راه‌اندازی در سرور ویندوز 10 (بدون اینترنت بین‌الملل)
+# NIR — استقرار در ویندوز ۱۰ (Production)
 
-این نرم‌افزار به گونه‌ای طراحی شده است که بدون نیاز به اینترنت جهانی و کاملاً در شبکه داخلی (LAN) شرکت یا کارخانه روی یک سیستم ویندوز 10 کار کند. 
+این سند برای تیم فنی است. برای اپراتور کارخانه، فایل `README-FACTORY.txt` را ببینید.
 
-## پیش‌نیازها
+## معماری تولید
 
-1. **Node.js** (نسخه 18 یا بالاتر)
-2. **PostgreSQL** (نسخه 14 یا بالاتر)
-3. **PM2** (برای مدیریت اجرای مداوم سرور)
-
-## ۱. نصب پایگاه داده (PostgreSQL)
-1. فایل نصب PostgreSQL برای ویندوز را دانلود و نصب کنید.
-2. در هنگام نصب، رمز عبور کاربر `postgres` را تنظیم کنید.
-3. با استفاده از ابزار pgAdmin یک دیتابیس جدید به نام `nir_db` بسازید.
-
-## ۲. دریافت و آماده‌سازی کدها
-1. سورس کد برنامه را روی سرور ویندوز خود (مثلاً در درایو C پوشه `C:\poultry-app`) قرار دهید.
-2. یک ترمینال (CMD یا PowerShell) باز کرده و به مسیر کدها بروید:
-   ```cmd
-   cd C:\poultry-app
-   ```
-3. دستور زیر را برای نصب وابستگی‌ها وارد کنید:
-   ```cmd
-   npm install
-   ```
-
-## ۳. تنظیم فایل متغیرهای محیطی
-یک فایل به نام `.env` در مسیر اصلی پروژه بسازید و اطلاعات زیر را وارد کنید:
-
-```env
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/nir_db
-PORT=3000
-JWT_SECRET=your_secure_random_string
 ```
-*توجه: `YOUR_PASSWORD` را با رمز عبوری که در مرحله نصب تنظیم کردید جایگزین کنید.*
-
-## ۴. بیلد گرفتن از پروژه (Production Build)
-در ترمینال، دستور زیر را اجرا کنید تا نسخه نهایی و بهینه‌شده نرم‌افزار ساخته شود:
-
-```cmd
-npm run build
+Caddy :443 (HTTPS)  ──►  NIR server :3000 (Node, 0.0.0.0)  ──►  PostgreSQL (127.0.0.1:5432)
 ```
-پس از این مرحله، کدهای سرور و کلاینت در پوشه `dist` قرار می‌گیرند.
 
-## ۵. اجرای سرور با PM2
-برای اجرای مداوم برنامه (حتی پس از ری‌استارت شدن ویندوز):
+* فرانت‌اند React/PWA و API روی یک سرور Express سرو می‌شوند.
+* پایگاه‌داده PostgreSQL تنها منبع معتبر داده است (SQLite/Firestore استفاده نمی‌شود).
+* حالت آفلاین فرانت‌اند با IndexedDB + صف همگام‌سازی (`/api/sync`) کار می‌کند.
 
-1. PM2 را نصب کنید:
-   ```cmd
-   npm install -g pm2
-   ```
-2. سرور را اجرا کنید:
-   ```cmd
-   pm2 start dist/server.cjs --name "NirApp"
-   ```
-3. ذخیره پیکربندی PM2 برای اجرای خودکار پس از روشن شدن ویندوز:
-   توصیه می‌شود از بسته `pm2-windows-startup` استفاده کنید:
-   ```cmd
-   npm install pm2-windows-startup -g
-   pm2-startup install
-   pm2 save
-   ```
+## بسته‌ی تولید
 
-## ۶. دسترسی کاربران در شبکه داخلی
-برای اینکه کلاینت‌ها (لپ‌تاپ‌ها، موبایل‌ها) بتوانند به نرم‌افزار متصل شوند:
+بسته‌ی `NIR-Factory-Production-Windows.zip` توسط GitHub Actions ساخته می‌شود و شامل:
 
-1. آی‌پی سرور ویندوز را در شبکه پیدا کنید (مثلاً از طریق دستور `ipconfig` در CMD).
-2. آدرس `http://[SERVER_IP]:3000` را در مرورگر سیستم کلاینت وارد کنید.
-3. در تنظیمات فایروال ویندوز سرور، پورت `3000` را برای دسترسی Inbound باز کنید.
+```
+NIR/
+├── server.cjs            (bundle سرور، بدون نیاز به npm/Node سیستمی)
+├── db-migrate.cjs        (اجرای Migration با Node همراه)
+├── dist/                 (فرانت‌اند ساخته‌شده)
+├── runtime/node.exe      (Node ویندوزی همراه)
+├── deploy/windows/       (اسکریپت‌های نصب و بهره‌برداری)
+├── data/{uploads,backups}
+├── .env.example
+├── INSTALL-NIR.ps1  INSTALL-INTERNET.ps1
+├── START-NIR.bat  STOP-NIR.bat  RESTART-NIR.bat
+├── BACKUP-NIR.ps1  RESTORE-NIR.ps1  UNINSTALL-NIR.ps1
+└── README-FACTORY.txt
+```
 
-## ۷. دسترسی از راه دور (VPN)
-برای دسترسی از خارج کارخانه، از راه‌حل‌هایی مانند **Tailscale**، **AnyDesk VPN** یا **OpenVPN** استفاده کنید و به IP مجازی سرور متصل شوید. نیازی به خرید سرور ابری (VPS) ماهانه نیست.
+نیازمندی کامپیوتر کارخانه: فقط ویندوز ۶۴ بیتی و PostgreSQL 16+ (یا نسخه‌ی
+خصوصی که نصب‌کننده خودش می‌سازد). npm، Node سیستمی، Git، Vite و TypeScript
+لازم نیست.
 
-## سیستم بکاپ‌گیری (پشتیبان‌گیری)
-نرم‌افزار یک API برای بکاپ‌گیری در نظر گرفته است که فایل‌های دیتابیس را مستقیماً از طریق ابزار `pg_dump` بکاپ می‌گیرد.
-برای کارکرد این سیستم، باید ابزار `pg_dump` در متغیرهای سیستم ویندوز (Environment Variables -> PATH) قرار داشته باشد.
-مسیر پیش‌فرض: `C:\Program Files\PostgreSQL\14\bin`
+## نصب
 
-- بکاپ‌ها در پوشه `backups/` داخل مسیر پروژه ذخیره می‌شوند.
+```powershell
+# روی کامپیوتر کارخانه، PowerShell با دسترسی Administrator
+powershell -NoProfile -ExecutionPolicy Bypass -File .\INSTALL-NIR.ps1
+```
+
+نصب‌کننده idempotent است (اجرای دوباره، سرویس/تسک تکراری نمی‌سازد). جزئیات
+گام‌ها و گزینه‌ها در ابتدای فایل `INSTALL-NIR.ps1` آمده است.
+
+## دسترسی اینترنت
+
+`INSTALL-INTERNET.ps1` استراتژی مناسب را خودکار انتخاب می‌کند. توضیح کامل،
+رکوردهای DNS و حالت‌های CGNAT در `docs/Internet-Access.md`.
+
+## سرویس‌های خودکار (Scheduled Tasks)
+
+| Task | نقش |
+|------|-----|
+| `NIR Factory Server` | اجرای پیوسته‌ی سرور NIR (SYSTEM، در بوت) |
+| `NIR Caddy Proxy` | پروکسی HTTPS روی ۴۴۳ |
+| `NIR DDNS Updater` | به‌روزرسانی رکورد DNS هر ۵ دقیقه |
+| `NIR PostgreSQL` | فقط اگر از PostgreSQL پرتابل استفاده شود |
+
+## توسعه‌ی محلی
+
+```bash
+npm ci --include=dev --legacy-peer-deps
+npm run typecheck
+npm run lint
+npm test            # نیاز به PostgreSQL واقعی (DATABASE_URL)
+npm run build       # dist/ + dist/server.cjs
+npm start           # اجرای نسخه‌ی تولید
+```
+
+> نکته: تست‌های یکپارچه (`tests/api.test.ts`) به یک PostgreSQL واقعی نیاز دارند
+> و در GitHub Actions با سرویس PostgreSQL اجرا می‌شوند.
