@@ -1,5 +1,14 @@
 type StoreValue = any;
-type SyncItem = { id: string; action: 'create' | 'update' | 'delete'; entityType: string; data: any; timestamp: number };
+export type SyncItem = {
+  id: string;
+  action: 'create' | 'update' | 'delete';
+  entityType: string;
+  data: any;
+  timestamp: number;
+  retryCount?: number;
+  status?: 'pending' | 'syncing' | 'failed';
+  lastError?: string;
+};
 
 type StoreName = 'store' | 'syncQueue';
 
@@ -80,7 +89,11 @@ const normalizeTimestamp = (value: any) => {
   return Number.isNaN(t) ? Date.now() : t;
 };
 
-export const getSyncQueue = async (): Promise<SyncItem[]> => (await getDB()).getAll('syncQueue') as SyncItem[];
+export const getSyncQueue = async (): Promise<SyncItem[]> => {
+  const db = await getDB();
+  const items = await db.getAll('syncQueue');
+  return items as SyncItem[];
+};
 export const getSyncQueueCount = async () => (await getDB()).count('syncQueue');
 export const clearSyncItem = async (id: string) => {
   await (await getDB()).delete('syncQueue', id);
@@ -136,7 +149,12 @@ export const setStoreItem = async (key: string, value: any, entityType?: string,
 
 export const getStoreItem = (key: string) => memoryCache[key];
 export const enqueueSync = async (item: SyncItem) => {
-  await (await getDB()).put('syncQueue', item);
+  const normalized: SyncItem = {
+    ...item,
+    retryCount: item.retryCount || 0,
+    status: item.status || 'pending',
+  };
+  await (await getDB()).put('syncQueue', normalized);
   emitSyncStatus({ pending: await getSyncQueueCount() });
   void triggerSync();
 };
@@ -149,8 +167,15 @@ export const triggerSync = async () => {
   emitSyncStatus({ syncing: true, pending: await getSyncQueueCount() });
   try {
     const queue = await getSyncQueue();
+    const db = await getDB();
     const token = typeof window !== 'undefined' ? window.localStorage.getItem('nir_token') : null;
+
     for (const item of queue) {
+      // Skip items that have exceeded max retries so they do not block subsequent sync items
+      if ((item.retryCount || 0) >= 5 && item.status === 'failed') {
+        continue;
+      }
+
       try {
         const response = await fetch('/api/sync', {
           method: 'POST',
@@ -159,20 +184,47 @@ export const triggerSync = async () => {
             ...(token ? { Authorization: `Bearer ${token}` } : {})
           },
           credentials: 'include',
-          body: JSON.stringify(item),
+          body: JSON.stringify({
+            id: item.id,
+            action: item.action,
+            entityType: item.entityType,
+            data: item.data,
+            timestamp: item.timestamp,
+          }),
         });
+
         if (response.ok) {
           await clearSyncItem(item.id);
           anySynced = true;
           continue;
         }
-        if (response.status === 401 || response.status === 403) break;
+
+        // Auth issues: stop queue processing until re-authenticated
+        if (response.status === 401 || response.status === 403) {
+          emitSyncStatus({ authError: true });
+          break;
+        }
+
+        // Mutation conflict or validation error (400, 409): increment retries
+        const errorData = await response.json().catch(() => ({ error: 'Sync server error' }));
+        const currentRetries = (item.retryCount || 0) + 1;
+        const updatedItem: SyncItem = {
+          ...item,
+          retryCount: currentRetries,
+          status: currentRetries >= 5 ? 'failed' : 'pending',
+          lastError: errorData.error || `HTTP ${response.status}`,
+        };
+        await db.put('syncQueue', updatedItem);
       } catch {
+        // Network connection dropped or unreachable; stop queue processing
         break;
       }
     }
+
     const pending = await getSyncQueueCount();
-    if (anySynced && pending === 0) await hydrateFromServer();
+    if (anySynced && pending === 0) {
+      await hydrateFromServer();
+    }
     emitSyncStatus({ syncing: false, pending, lastAttempt: Date.now(), synced: anySynced && pending === 0 });
     return anySynced && pending === 0;
   } finally {

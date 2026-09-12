@@ -268,20 +268,9 @@ const EntryPage: React.FC = () => {
                         productId: settings.products[0]?.id || '',
                         billWeight: 0,
                         scaleWeight: 0,
-                        wastage: 0
-                    });
-                } else {
-                    if (keepSellerInfo) {
-                    setFormData({
-                        ...formData,
-                        productId: settings.products[0]?.id || '',
-                        billWeight: 0,
-                        scaleWeight: 0,
-                        wastage: 0
                     });
                 } else {
                     setFormData({ ...initialFormState, productId: formData.productId });
-                }
                 }
                 setTimeout(() => firstInputRef.current?.focus(), 100);
             }

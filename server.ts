@@ -24,22 +24,13 @@ import usersRouter from "./server/routes/users";
 import { requireAuth } from "./server/middleware/auth";
 import { securityHeaders } from "./server/middleware/security";
 import { apiRateLimiter, authRateLimiter } from "./server/middleware/rateLimit";
+import { corsMiddleware } from "./server/middleware/cors";
 
 const app = express();
 const PORT = 3000;
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
-  : [];
 
 app.use(securityHeaders);
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(null, true);
-  },
-  credentials: true,
-}));
+app.use(corsMiddleware);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 

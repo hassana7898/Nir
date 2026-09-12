@@ -3,6 +3,7 @@ import { db } from '../db';
 import { formulas, formula_items } from '../db/schema';
 import { eq, isNull, desc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { requireRole } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -39,7 +40,7 @@ router.get('/', async (_req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { id, name, finishedGoodId, items } = req.body;
     if (!name || !finishedGoodId) return res.status(400).json({ error: 'name and finishedGoodId are required.' });
@@ -77,9 +78,9 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { name, finishedGoodId, items } = req.body;
     const normalized = normalizeItems(items);
 
@@ -100,9 +101,9 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('ADMIN'), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await db.update(formulas).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(formulas.id, id));
     res.json({ success: true, id });
   } catch (error: any) {

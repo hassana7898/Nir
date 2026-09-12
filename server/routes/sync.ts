@@ -5,6 +5,7 @@ import * as schema from '../db/schema';
 import { recordInventoryTransaction, deleteTransactionsByReference, getInventoryStockByDate } from '../services/inventoryService';
 import { createInvoiceInTransaction, updateInvoiceInTransaction } from '../services/invoiceService';
 import { createProductionRecordInTransaction } from '../services/productionService';
+import { requireRole } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -91,7 +92,7 @@ router.get('/state', async (_req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('ADMIN', 'MANAGER', 'ACCOUNTING', 'OPERATOR'), async (req, res) => {
   const body = req.body as Mutation;
   const mutationId = String(body?.id || '');
   if (!mutationId || !body.entityType || !body.action) return res.status(400).json({ error: 'Invalid sync mutation.' });

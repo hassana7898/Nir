@@ -7,10 +7,42 @@ export interface AuthUser { id: string; username: string; role: string; }
 declare global { namespace Express { interface Request { user?: AuthUser; sessionToken?: string; } } }
 
 const SESSION_COOKIE = 'nir_session';
-const getJwtSecret = (): string => process.env.JWT_SECRET || 'nir-app-session-secret-key-fallback-2026';
-const crossSiteCookie = process.env.CROSS_SITE_COOKIE !== undefined
-  ? String(process.env.CROSS_SITE_COOKIE).toLowerCase() === 'true'
-  : true;
+
+export const getJwtSecret = (): string => {
+  const secret = (process.env.JWT_SECRET || '').trim();
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('[NIR AUTH FATAL] JWT_SECRET is strictly required in production mode. Please set JWT_SECRET in .env');
+    }
+    console.warn('[NIR AUTH WARN] JWT_SECRET is not set in development. Using development fallback secret.');
+    return 'nir-dev-fallback-secret-key-change-in-production';
+  }
+  return secret;
+};
+
+export const buildSessionCookieHeader = (req: Request, token: string, maxAgeSeconds: number = 2592000): string => {
+  const isHttps = req.secure ||
+                  req.headers['x-forwarded-proto'] === 'https' ||
+                  req.protocol === 'https';
+
+  const crossSiteRequested = process.env.CROSS_SITE_COOKIE !== undefined
+    ? ['true', '1'].includes(String(process.env.CROSS_SITE_COOKIE).toLowerCase().trim())
+    : false;
+
+  let sameSite = 'Lax';
+  let securePart = '';
+
+  // RFC 6265bis: SameSite=None is ONLY valid with Secure over HTTPS.
+  // Over HTTP (localhost, factory LAN 192.168.x.x, Windows standalone), browsers reject Secure cookies.
+  if (isHttps) {
+    securePart = '; Secure';
+    if (crossSiteRequested) {
+      sameSite = 'None';
+    }
+  }
+
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=${sameSite}; Max-Age=${maxAgeSeconds}${securePart}`;
+};
 
 export const getSessionToken = (req: Request): string | null => {
   const cookieHeader = req.headers.cookie || '';
@@ -59,19 +91,14 @@ export const setSessionCookie = async (req: Request, res: Response, user: AuthUs
     token = jwt.sign(user, secret, { algorithm: 'HS256', expiresIn: '30d', issuer: 'nir-app', subject: user.id });
   }
 
-  const secure = process.env.NODE_ENV === 'production' && req.protocol === 'https';
-  const sameSite = crossSiteCookie ? 'None' : 'Lax';
-  const securePart = secure || crossSiteCookie ? '; Secure' : '';
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=${sameSite}; Max-Age=2592000${securePart}`);
+  res.setHeader('Set-Cookie', buildSessionCookieHeader(req, token, 2592000));
   return token;
 };
 
 export const clearSessionCookie = async (req: Request, res: Response): Promise<void> => {
   const token = getSessionToken(req);
   if (token) await deleteDBSession(token).catch(() => {});
-  const sameSite = crossSiteCookie ? 'None' : 'Lax';
-  const securePart = crossSiteCookie ? '; Secure' : '';
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=${sameSite}; Max-Age=0${securePart}`);
+  res.setHeader('Set-Cookie', buildSessionCookieHeader(req, '', 0));
 };
 
 export const requireRole = (...allowedRoles: string[]) => {

@@ -3,6 +3,7 @@ import { createProductionRecordWithTransaction, deleteProductionRecordWithTransa
 import { db } from '../db';
 import { production_records, batches } from '../db/schema';
 import { isNull, desc } from 'drizzle-orm';
+import { requireRole } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ router.get('/', async (_req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (req, res) => {
   try {
     const { date, finishedGoodId, formulaId, quantityProduced, batchNumber } = req.body;
     if (!date || !finishedGoodId || quantityProduced === undefined) {
@@ -42,10 +43,11 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
-    await deleteProductionRecordWithTransaction(req.params.id);
-    res.json({ success: true, id: req.params.id });
+    const id = String(req.params.id);
+    await deleteProductionRecordWithTransaction(id);
+    res.json({ success: true, id });
   } catch (error: any) {
     console.error('Delete production error:', error);
     res.status(400).json({ error: error.message || 'Failed to delete production record.' });

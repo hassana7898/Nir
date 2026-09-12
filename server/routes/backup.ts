@@ -2,11 +2,12 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { backupDatabase, restoreDatabase } from '../services/backup';
+import { requireRole } from '../middleware/auth';
 
 const router = express.Router();
 
 // POST /api/backup - Generate backup
-router.post('/', async (_req, res) => {
+router.post('/', requireRole('ADMIN'), async (_req, res) => {
   try {
     const result = await backupDatabase();
     res.json({
@@ -24,8 +25,8 @@ router.post('/', async (_req, res) => {
 });
 
 // GET /api/backup/download/:filename - Download backup
-router.get('/download/:filename', (req, res) => {
-  const safeFilename = path.basename(req.params.filename);
+router.get('/download/:filename', requireRole('ADMIN'), (req, res) => {
+  const safeFilename = path.basename(String(req.params.filename));
   const filePath = path.join(process.cwd(), 'backups', safeFilename);
 
   if (!fs.existsSync(filePath)) {
@@ -36,7 +37,7 @@ router.get('/download/:filename', (req, res) => {
 });
 
 // POST /api/backup/restore - Restore from JSON backup payload
-router.post('/restore', async (req, res) => {
+router.post('/restore', requireRole('ADMIN'), async (req, res) => {
   try {
     const backupData = req.body;
     if (!backupData) {

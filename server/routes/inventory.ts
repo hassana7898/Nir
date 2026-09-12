@@ -1,6 +1,7 @@
 import express from 'express';
 import { getInventoryStockByDate, performInventoryAdjustment } from '../services/inventoryService';
 import { getInventoryTransactionsPaginated } from '../repositories/inventoryRepository';
+import { requireRole } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -43,7 +44,7 @@ router.get('/transactions', async (req, res) => {
 });
 
 // POST /api/inventory/adjust - Perform inventory adjustment inside transaction
-router.post('/adjust', async (req, res) => {
+router.post('/adjust', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (req, res) => {
   try {
     const { date, productId, newQuantity, reason } = req.body;
     if (!date || !productId || newQuantity === undefined) {

@@ -13,7 +13,7 @@ const userCreateSchema = z.object({
   username: z.string().min(3, "نام کاربری باید حداقل ۳ کاراکتر باشد"),
   password: z.string().min(6, "رمز عبور باید حداقل ۶ کاراکتر باشد"),
   role: z.enum(["ADMIN", "MANAGER", "ACCOUNTING", "OPERATOR", "VIEWER"], {
-    errorMap: () => ({ message: "نقش نامعتبر است (ADMIN, MANAGER, ACCOUNTING, OPERATOR, VIEWER)" })
+    message: "نقش نامعتبر است (ADMIN, MANAGER, ACCOUNTING, OPERATOR, VIEWER)"
   }),
   fullName: z.string().optional().nullable(),
 });
@@ -75,7 +75,7 @@ router.post("/", requireRole("ADMIN"), async (req, res) => {
 // DELETE /api/users/:id - Delete user (Admin only)
 router.delete("/:id", requireRole("ADMIN"), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     if (req.user?.id === id) {
       return res.status(400).json({ success: false, error: "امکان حذف حساب کاربری جاری وجود ندارد" });
     }

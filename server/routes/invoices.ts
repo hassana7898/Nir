@@ -6,6 +6,7 @@ import {
   deleteInvoiceWithTransaction,
   bulkMoveInvoicesWithTransaction
 } from '../services/invoiceService';
+import { requireRole } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/invoices/bulk-move - Move multiple invoices inside a single database transaction
-router.post('/bulk-move', async (req, res) => {
+router.post('/bulk-move', requireRole('ADMIN', 'MANAGER', 'ACCOUNTING', 'OPERATOR'), async (req, res) => {
   try {
     const { ids, targetDate } = req.body;
     if (!Array.isArray(ids) || ids.length === 0 || !targetDate) {
@@ -55,7 +56,7 @@ router.post('/bulk-move', async (req, res) => {
 });
 
 // POST /api/invoices - Create invoice inside database transaction
-router.post('/', async (req, res) => {
+router.post('/', requireRole('ADMIN', 'MANAGER', 'ACCOUNTING', 'OPERATOR'), async (req, res) => {
   try {
     const id = await createInvoiceWithTransaction(req.body);
     res.status(201).json({ success: true, id });
@@ -66,10 +67,11 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/invoices/:id - Update invoice inside database transaction
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('ADMIN', 'MANAGER', 'ACCOUNTING'), async (req, res) => {
   try {
-    await updateInvoiceWithTransaction(req.params.id, req.body);
-    res.json({ success: true, id: req.params.id });
+    const id = String(req.params.id);
+    await updateInvoiceWithTransaction(id, req.body);
+    res.json({ success: true, id });
   } catch (error: any) {
     console.error('Update invoice error:', error);
     res.status(400).json({ error: error.message || 'Failed to update invoice.' });
@@ -77,10 +79,11 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/invoices/:id - Delete invoice inside database transaction
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
-    await deleteInvoiceWithTransaction(req.params.id);
-    res.json({ success: true, id: req.params.id });
+    const id = String(req.params.id);
+    await deleteInvoiceWithTransaction(id);
+    res.json({ success: true, id });
   } catch (error: any) {
     console.error('Delete invoice error:', error);
     res.status(400).json({ error: error.message || 'Failed to delete invoice.' });

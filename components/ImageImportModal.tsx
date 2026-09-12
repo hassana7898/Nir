@@ -281,7 +281,7 @@ const ImageImportModal: React.FC<ImageImportModalProps> = ({ isOpen, onClose, on
             return rows;
         } catch (e) {
             console.error(e);
-            throw new Error("خطا در پردازش فایل PDF", { cause: e });
+            throw new Error("خطا در پردازش فایل PDF: " + (e instanceof Error ? e.message : String(e)), { cause: e });
         }
     };
 

@@ -53,7 +53,7 @@ router.post("/", requireRole("ADMIN", "MANAGER"), async (req, res) => {
 // PUT /api/warehouses/:id - Update warehouse
 router.put("/:id", requireRole("ADMIN", "MANAGER"), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const parsed = warehouseSchema.partial().parse(req.body);
     const updatePayload: any = { updatedAt: new Date() };
     if (parsed.name) updatePayload.name = parsed.name;
@@ -75,7 +75,7 @@ router.put("/:id", requireRole("ADMIN", "MANAGER"), async (req, res) => {
 // DELETE /api/warehouses/:id - Soft delete warehouse
 router.delete("/:id", requireRole("ADMIN"), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await db.update(warehouses).set({ deletedAt: new Date() }).where(eq(warehouses.id, id));
     res.json({ success: true, message: "انبار حذف گردید" });
   } catch (error: any) {

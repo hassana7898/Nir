@@ -3,6 +3,7 @@ import { db } from '../db';
 import { farmers } from '../db/schema';
 import { eq, isNull, asc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { requireRole } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ router.get('/', async (_req, res) => {
 });
 
 // POST /api/farmers - Create a new farmer
-router.post('/', async (req, res) => {
+router.post('/', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
     const { id, name, phone, broods, isHidden } = req.body;
     if (!name || !String(name).trim()) {
@@ -61,9 +62,9 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/farmers/:id - Update an existing farmer
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { name, phone, broods, isHidden } = req.body;
 
     const updatePayload: any = { updatedAt: new Date() };
@@ -82,9 +83,9 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/farmers/:id - Soft delete a farmer
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('ADMIN'), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await db
       .update(farmers)
       .set({ deletedAt: new Date(), updatedAt: new Date() })

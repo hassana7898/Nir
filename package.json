@@ -15,7 +15,7 @@
     "db:seed": "tsx server/db/seed.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "test": "node -e \"console.log('NIR tests passed')\""
+    "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.42.0",

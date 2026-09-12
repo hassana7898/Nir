@@ -19,7 +19,7 @@ const base64ToBytes = (value: string) => Uint8Array.from(atob(value), c => c.cha
 const deriveVerifier = async (password: string, salt: Uint8Array) => {
   const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as unknown as BufferSource, iterations: ITERATIONS, hash: 'SHA-256' },
     keyMaterial,
     256,
   );

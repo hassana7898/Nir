@@ -47,12 +47,24 @@ export interface Brood {
     activeProductsAtCreation?: string[]; // Which products were active when this brood was created
 }
 
+export interface Driver {
+    id: string;
+    name: string;
+    phone?: string | null;
+    iban?: string | null;
+    createdAt?: number | string;
+    updatedAt?: number | string;
+}
+
 export interface Farmer {
     id: string;
     name: string;
+    phone?: string | null;
     broods: Brood[];
     isHidden?: boolean;
     isDeleted?: boolean;
+    createdAt?: number | string;
+    updatedAt?: number | string;
 }
 
 

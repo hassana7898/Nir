@@ -26,9 +26,9 @@ router.post('/setup', async (req, res) => {
     if (existing.length) return res.status(409).json({ error: 'Initial setup has already been completed.' });
     const passwordHash = await bcrypt.hash(password, 12);
     const id = randomUUID();
-    await db.insert(users).values({ id, username: 'admin', passwordHash, role: 'admin' });
-    const token = await setSessionCookie(req, res, { id, username: 'admin', role: 'admin' });
-    res.json({ success: true, token, user: { id, username: 'admin', role: 'admin' } });
+    await db.insert(users).values({ id, username: 'admin', passwordHash, role: 'ADMIN' });
+    const token = await setSessionCookie(req, res, { id, username: 'admin', role: 'ADMIN' });
+    res.json({ success: true, token, user: { id, username: 'admin', role: 'ADMIN' } });
   } catch (error) {
     console.error('Auth setup error:', error);
     res.status(500).json({ error: 'Could not complete setup.' });
@@ -37,11 +37,15 @@ router.post('/setup', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
+    const username = String(req.body?.username || 'admin').trim();
     const password = String(req.body?.password || '');
-    const rows = await db.select().from(users).where(eq(users.username, 'admin')).limit(1);
+    if (!password) {
+      return res.status(400).json({ error: 'رمز عبور الزامی است.' });
+    }
+    const rows = await db.select().from(users).where(eq(users.username, username)).limit(1);
     const user = rows[0];
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      return res.status(401).json({ error: 'Invalid credentials.' });
+      return res.status(401).json({ error: 'نام کاربری یا رمز عبور نامعتبر است.' });
     }
     const token = await setSessionCookie(req, res, { id: user.id, username: user.username, role: user.role });
     res.json({ success: true, token, user: { id: user.id, username: user.username, role: user.role } });

@@ -3,6 +3,7 @@ import { db } from '../db';
 import { drivers } from '../db/schema';
 import { eq, isNull, asc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { requireRole } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ router.get('/', async (_req, res) => {
 });
 
 // POST /api/drivers - Add a driver
-router.post('/', async (req, res) => {
+router.post('/', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (req, res) => {
   try {
     const { name, phone, iban } = req.body;
     if (!name || !String(name).trim()) {
@@ -62,9 +63,9 @@ router.post('/', async (req, res) => {
 });
 
 // DELETE /api/drivers/:name - Soft delete a driver
-router.delete('/:name', async (req, res) => {
+router.delete('/:name', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   try {
-    const name = decodeURIComponent(req.params.name);
+    const name = decodeURIComponent(String(req.params.name));
     await db
       .update(drivers)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
