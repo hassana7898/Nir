@@ -36,6 +36,8 @@ jobs:
         run: npm run build:web
       - name: Bundle production server
         run: npx esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --external:pg-native --external:vite --sourcemap --outfile=dist/server.cjs
+      - name: Bundle database migration
+        run: npx esbuild server/db/migrate.ts --bundle --platform=node --format=cjs --packages=bundle --external:pg-native --outfile=dist/db-migrate.cjs
       - name: Apply real PostgreSQL schema
         run: npm run db:migrate
       - name: Run API tests against real PostgreSQL
@@ -60,13 +62,15 @@ jobs:
           mkdir -p release/dist runtime-temp
           cp -R dist/. release/dist/
           cp release/dist/server.cjs release/server.cjs
+          cp release/dist/db-migrate.cjs release/db-migrate.cjs
           cp .env.example release/.env.example
+          cp -R deploy release/deploy
           NODE_VERSION="$(node -p 'process.versions.node')"
           curl --fail --location --retry 3 --retry-delay 2 "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip" --output node-win.zip
           unzip -q node-win.zip -d runtime-temp
           mkdir -p release/runtime
           cp -R "runtime-temp/node-v${NODE_VERSION}-win-x64/." release/runtime/
-          rm -rf runtime-temp node-win.zip release/dist/server.cjs release/dist/server.cjs.map
+          rm -rf runtime-temp node-win.zip release/dist/server.cjs release/dist/server.cjs.map release/dist/db-migrate.cjs
           cat > release/start-nir.bat <<'EOF'
           @echo off
           setlocal
@@ -82,36 +86,37 @@ jobs:
           EOF
           cat > release/install-nir.bat <<'EOF'
           @echo off
-          setlocal
-          set "TARGET=C:\NIR"
-          if not exist "%TARGET%" mkdir "%TARGET%"
-          robocopy "%~dp0" "%TARGET%" /E /R:2 /W:2 /XF install-nir.bat >nul
-          echo NIR installed to %TARGET%
-          echo Configure C:\NIR\.env and run C:\NIR\start-nir.bat
-          pause
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy\windows\INSTALL-ONLINE.ps1"
           EOF
           cat > release/README.txt <<'EOF'
-          NIR Portable Windows Server
+          NIR Factory + Online Windows Package
 
-          Package structure:
-            server.cjs       Production API server
-            dist\            Built React frontend
-            runtime\         Bundled Windows Node.js runtime
-            .env.example     Server configuration template
+          1) Install PostgreSQL 16+ on the factory PC.
+          2) Run install-nir.bat as Administrator.
+          3) In Cloudflare, publish app.artadan.ir -> http://localhost:3000.
+          4) Run deploy\windows\INSTALL-CLOUDFLARE.ps1 as Administrator and paste the Tunnel token.
+          5) Open https://app.artadan.ir.
 
-          Run install-nir.bat, configure C:\NIR\.env, then run C:\NIR\start-nir.bat.
-          npm and a system-wide Node.js installation are not required.
+          The package contains the production server, React frontend, bundled Windows Node.js runtime,
+          database migration bundle, and deployment scripts. npm and system-wide Node.js are not required.
+          PostgreSQL remains the authoritative database and is intentionally installed separately.
           EOF
       - name: Validate portable package
         shell: bash
         run: |
           set -euo pipefail
           node --check release/server.cjs
+          node --check release/db-migrate.cjs
           test -f release/dist/index.html
           test -d release/dist/assets
           test -f release/server.cjs
+          test -f release/db-migrate.cjs
           test -f release/runtime/node.exe
+          test -f release/deploy/windows/INSTALL-ONLINE.ps1
+          test -f release/deploy/windows/INSTALL-CLOUDFLARE.ps1
+          test -f release/deploy/windows/RUN-NIR.ps1
           test ! -f release/dist/server.cjs
+          test ! -f release/dist/db-migrate.cjs
           test ! -f release/index.html
       - name: Test portable package with Linux runtime
         shell: bash
@@ -155,8 +160,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Bundled Windows Node runtime failed to execute.' }
           & 'release\runtime\node.exe' --check 'release\server.cjs'
           if ($LASTEXITCODE -ne 0) { throw 'Bundled server.cjs failed syntax validation on Windows.' }
+          & 'release\runtime\node.exe' --check 'release\db-migrate.cjs'
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled db-migrate.cjs failed syntax validation on Windows.' }
           if (-not (Test-Path 'release\dist\index.html')) { throw 'Frontend index.html is missing.' }
           if (-not (Test-Path 'release\dist\assets')) { throw 'Frontend assets directory is missing.' }
+          if (-not (Test-Path 'release\deploy\windows\INSTALL-ONLINE.ps1')) { throw 'Online installer is missing.' }
       - name: Windows portable smoke test
         shell: pwsh
         run: |
