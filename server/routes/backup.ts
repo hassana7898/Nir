@@ -1,0 +1,54 @@
+import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import { backupDatabase, restoreDatabase } from '../services/backup';
+
+const router = express.Router();
+
+// POST /api/backup - Generate backup
+router.post('/', async (_req, res) => {
+  try {
+    const result = await backupDatabase();
+    res.json({
+      success: true,
+      file: result.filePath,
+      fileName: result.fileName,
+      format: result.format,
+      sizeBytes: result.sizeBytes,
+      downloadUrl: `/api/backup/download/${result.fileName}`,
+    });
+  } catch (error: any) {
+    console.error('Backup error:', error);
+    res.status(500).json({ error: error.message || 'Backup failed.' });
+  }
+});
+
+// GET /api/backup/download/:filename - Download backup
+router.get('/download/:filename', (req, res) => {
+  const safeFilename = path.basename(req.params.filename);
+  const filePath = path.join(process.cwd(), 'backups', safeFilename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Backup file not found.' });
+  }
+
+  res.download(filePath, safeFilename);
+});
+
+// POST /api/backup/restore - Restore from JSON backup payload
+router.post('/restore', async (req, res) => {
+  try {
+    const backupData = req.body;
+    if (!backupData) {
+      return res.status(400).json({ error: 'No backup data provided.' });
+    }
+
+    const result = await restoreDatabase(backupData);
+    res.json({ success: true, restoredTables: result.restoredTables });
+  } catch (error: any) {
+    console.error('Restore error:', error);
+    res.status(500).json({ error: error.message || 'Restore failed.' });
+  }
+});
+
+export default router;

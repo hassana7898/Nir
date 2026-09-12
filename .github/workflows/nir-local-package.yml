@@ -1,0 +1,113 @@
+name: Build NIR Portable Windows Package
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-local:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The runner already has Node.js and npm. No cache is used because this
+      # repository intentionally does not require a lockfile for the build job.
+      - name: Verify Node and npm
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --prefer-online
+
+      - name: Build web
+        run: npm run build:web
+        env:
+          NODE_ENV: production
+
+      - name: Bundle server and prepare portable Windows runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release runtime-temp node-win.zip
+          mkdir -p release/dist release/runtime
+          cp -R dist/. release/dist/
+
+          npx esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --external:pg-native --sourcemap --outfile=release/server.cjs
+
+          NODE_VERSION="$(node -p 'process.versions.node')"
+          echo "Preparing portable Node.js runtime ${NODE_VERSION}"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip" \
+            --output node-win.zip
+          unzip -q node-win.zip -d runtime-temp
+          cp -R "runtime-temp/node-v${NODE_VERSION}-win-x64/." release/runtime/
+          rm -rf runtime-temp node-win.zip
+
+          cat > release/start-nir.bat <<'EOF'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          if not exist "%~dp0runtime\node.exe" (
+            echo NIR portable Node runtime was not found.
+            pause
+            exit /b 1
+          )
+          if not exist "%~dp0server.cjs" (
+            echo NIR server package was not found.
+            pause
+            exit /b 1
+          )
+          if not exist "%~dp0.env" (
+            copy /y "%~dp0.env.example" "%~dp0.env" >nul
+            echo .env was created from .env.example.
+            echo Configure DATABASE_URL before starting NIR.
+          )
+          set NODE_ENV=production
+          "%~dp0runtime\node.exe" "%~dp0server.cjs"
+          pause
+          EOF
+
+          cat > release/install-nir.bat <<'EOF'
+          @echo off
+          setlocal
+          set "TARGET=C:\NIR"
+          if not exist "%TARGET%" mkdir "%TARGET%"
+          robocopy "%~dp0" "%TARGET%" /E /R:2 /W:2 /XF install-nir.bat >nul
+          echo NIR installed to %TARGET%
+          echo Start it with %TARGET%\start-nir.bat
+          pause
+          EOF
+
+          cp .env.example release/.env.example
+          cat > release/README.txt <<'EOF'
+          NIR - Portable Windows Local Server
+
+          1. Run install-nir.bat once. This installs to C:\NIR.
+          2. Configure C:\NIR\.env with the PostgreSQL connection.
+          3. Run C:\NIR\start-nir.bat.
+
+          This package does not require npm, npm install, or node_modules on the factory PC.
+          The Node.js Windows runtime is included in the package.
+          EOF
+
+      - name: Validate portable package
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check release/server.cjs
+          test -f release/dist/index.html
+          test -f release/runtime/node.exe
+          test -f release/start-nir.bat
+          test -f release/install-nir.bat
+
+      - name: Upload portable Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nir-portable-windows
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
