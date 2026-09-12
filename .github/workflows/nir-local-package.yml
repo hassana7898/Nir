@@ -57,8 +57,8 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf release runtime-temp node-win.zip
-          mkdir -p release runtime-temp
-          cp -R dist/. release/
+          mkdir -p release/dist runtime-temp
+          cp -R dist/. release/dist/
           cp .env.example release/.env.example
           NODE_VERSION="$(node -p 'process.versions.node')"
           curl --fail --location --retry 3 --retry-delay 2 "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip" --output node-win.zip
@@ -72,8 +72,10 @@ jobs:
           cd /d "%~dp0"
           if not exist "%~dp0runtime\node.exe" (echo Node runtime missing.&pause&exit /b 1)
           if not exist "%~dp0server.cjs" (echo NIR server missing.&pause&exit /b 1)
+          if not exist "%~dp0dist\index.html" (echo NIR frontend missing.&pause&exit /b 1)
           if not exist "%~dp0.env" copy /y "%~dp0.env.example" "%~dp0.env" >nul
-          set NODE_ENV=production
+          set "NODE_ENV=production"
+          set "NIR_DIST_PATH=%~dp0dist"
           "%~dp0runtime\node.exe" "%~dp0server.cjs"
           pause
           EOF
@@ -84,33 +86,44 @@ jobs:
           if not exist "%TARGET%" mkdir "%TARGET%"
           robocopy "%~dp0" "%TARGET%" /E /R:2 /W:2 /XF install-nir.bat >nul
           echo NIR installed to %TARGET%
+          echo Configure C:\NIR\.env and run C:\NIR\start-nir.bat
           pause
           EOF
           cat > release/README.txt <<'EOF'
           NIR Portable Windows Server
+
+          Package structure:
+            server.cjs       Production API server
+            dist\            Built React frontend
+            runtime\         Bundled Windows Node.js runtime
+            .env.example     Server configuration template
+
           Run install-nir.bat, configure C:\NIR\.env, then run C:\NIR\start-nir.bat.
-          npm and node_modules are not required.
+          npm and a system-wide Node.js installation are not required.
           EOF
       - name: Validate portable package
         shell: bash
         run: |
           set -euo pipefail
           node --check release/server.cjs
-          test -f release/index.html
-          test -d release/assets
+          test -f release/dist/index.html
+          test -d release/dist/assets
           test -f release/runtime/node.exe
-          test ! -d release/dist
-      - name: Test portable package tree
+          test ! -f release/index.html
+      - name: Test portable package with Linux runtime
         shell: bash
         run: |
           set -euo pipefail
-          PORT=4002 NIR_DIST_PATH="$PWD/release" node release/server.cjs >/tmp/portable.log 2>&1 &
+          PORT=4002 NIR_DIST_PATH="$PWD/release/dist" node release/server.cjs >/tmp/portable.log 2>&1 &
           PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
           for i in {1..50}; do curl -fsS http://127.0.0.1:4002/api/health >/tmp/phealth.json && break || sleep 0.2; done
           test "$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/phealth.json')).database.status)")" = connected
           curl -fsS http://127.0.0.1:4002/ >/tmp/pindex.html
           grep -q '<html' /tmp/pindex.html
+          ASSET="$(grep -oE '/assets/[^\" ]+\.(js|mjs)' /tmp/pindex.html | head -1)"
+          test -n "$ASSET"
+          curl -fsS "http://127.0.0.1:4002$ASSET" >/tmp/app.js
       - name: Upload portable package
         uses: actions/upload-artifact@v4
         with:
@@ -118,3 +131,51 @@ jobs:
           path: release/
           if-no-files-found: error
           retention-days: 30
+
+  windows-runtime:
+    needs: build-local
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download portable package
+        uses: actions/download-artifact@v4
+        with:
+          name: nir-portable-windows
+          path: release
+      - name: Validate bundled Windows Node runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path 'release\runtime\node.exe')) { throw 'Bundled Windows Node runtime is missing.' }
+          & 'release\runtime\node.exe' --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Windows Node runtime failed to execute.' }
+          & 'release\runtime\node.exe' --check 'release\server.cjs'
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled server.cjs failed syntax validation on Windows.' }
+          if (-not (Test-Path 'release\dist\index.html')) { throw 'Frontend index.html is missing.' }
+          if (-not (Test-Path 'release\dist\assets')) { throw 'Frontend assets directory is missing.' }
+      - name: Windows portable smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:NODE_ENV = 'production'
+          $env:E2E_TEST = 'true'
+          $env:PORT = '4003'
+          $env:NIR_DIST_PATH = (Resolve-Path 'release\dist').Path
+          $process = Start-Process -FilePath (Resolve-Path 'release\runtime\node.exe').Path -ArgumentList @((Resolve-Path 'release\server.cjs').Path) -PassThru -WindowStyle Hidden
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 50; $i++) {
+              try {
+                $health = Invoke-RestMethod 'http://127.0.0.1:4003/api/health'
+                if ($health.status -eq 'ok') { $ok = $true; break }
+              } catch { }
+              Start-Sleep -Milliseconds 200
+            }
+            if (-not $ok) { throw 'Windows portable server did not become healthy.' }
+            $html = Invoke-WebRequest 'http://127.0.0.1:4003/' -UseBasicParsing
+            if ($html.StatusCode -ne 200) { throw "Frontend returned HTTP $($html.StatusCode)." }
+            if ($html.Content -notmatch '<html') { throw 'Frontend HTML was not served.' }
+          } finally {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          }
