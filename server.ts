@@ -4,7 +4,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import cors from "cors";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { checkDbHealth, closeDb } from "./server/db";
 import syncRouter from "./server/routes/sync";
@@ -133,6 +132,8 @@ let httpServer: ReturnType<typeof app.listen> | null = null;
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const viteModule = 'vite';
+    const { createServer: createViteServer } = await import(viteModule);
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
