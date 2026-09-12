@@ -65,21 +65,33 @@ jobs:
       - name: Production smoke test
         shell: bash
         run: |
-          set -euo pipefail
-          node dist/server.cjs >/tmp/nir.log 2>&1 &
+          set -uo pipefail
+          pkill -f 'dist/server.cjs' 2>/dev/null || true
+          sleep 1
+          PORT=4010 NIR_DIST_PATH="$PWD/dist" node dist/server.cjs >/tmp/nir.log 2>&1 &
           PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
-          for i in $(seq 1 60); do curl -fsS "http://127.0.0.1:${PORT}/api/health" >/tmp/health.json && break || sleep 0.5; done
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:4010/api/health" -o /tmp/health.json 2>/dev/null; then ok=1; break; fi
+            sleep 0.5
+          done
+          if [ "$ok" != "1" ]; then echo '--- server log ---'; cat /tmp/nir.log; exit 1; fi
           node -e "const h=require('/tmp/health.json'); if(h.status!=='ok'||h.database.status!=='connected'){console.error(h);process.exit(1)}"
-          curl -fsS "http://127.0.0.1:${PORT}/" >/tmp/index.html
+          curl -fsS "http://127.0.0.1:4010/" -o /tmp/index.html
           grep -q '<html' /tmp/index.html
           grep -q '/assets/' /tmp/index.html
-          JS=$(grep -oE '/assets/[^"]+\.js' /tmp/index.html | head -1)
-          CSS=$(grep -oE '/assets/[^"]+\.css' /tmp/index.html | head -1)
-          curl -fsS "http://127.0.0.1:${PORT}${JS}" | head -c 20 >/dev/null
-          curl -fsS "http://127.0.0.1:${PORT}${CSS}" | head -c 20 >/dev/null
-          code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/assets/does-not-exist-9999.js")
+          JS=$(grep -oE '/assets/[^\"]+\.js' /tmp/index.html | head -1)
+          CSS=$(grep -oE '/assets/[^\"]+\.css' /tmp/index.html | head -1)
+          test -n "$JS"
+          test -n "$CSS"
+          curl -fsS "http://127.0.0.1:4010${JS}" -o /tmp/app.js
+          curl -fsS "http://127.0.0.1:4010${CSS}" -o /tmp/app.css
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4010/assets/does-not-exist-9999.js")
           test "$code" = "404"
+          code2=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:4010/some-spa-route")
+          test "$code2" = "200"
+          echo 'Production smoke test passed.'
 
       - name: Assemble NIR-Factory-Production-Windows
         shell: bash
