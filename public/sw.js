@@ -71,24 +71,40 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) {
-          // Stale-while-revalidate for assets
-          fetch(request)
-            .then((fresh) => {
-              if (fresh.status === 200 && fresh.type === 'basic') {
-                caches.open(CACHE_VERSION).then((cache) => cache.put(request, fresh));
-              }
-            })
-            .catch(() => {});
-          return cached;
+          // Hardening: Verify Content-Type so stale caches don't return HTML for scripts
+          const cType = cached.headers.get('content-type') || '';
+          const isJsRequest = url.pathname.endsWith('.js');
+          const isCssRequest = url.pathname.endsWith('.css');
+          if ((isJsRequest || isCssRequest) && cType.includes('text/html')) {
+             // Invalid cache entry! Force network fetch.
+          } else {
+            // Stale-while-revalidate for assets
+            fetch(request)
+              .then((fresh) => {
+                if (fresh.status === 200 && fresh.type === 'basic') {
+                  const freshCType = fresh.headers.get('content-type') || '';
+                  if (!((isJsRequest || isCssRequest) && freshCType.includes('text/html'))) {
+                    caches.open(CACHE_VERSION).then((cache) => cache.put(request, fresh));
+                  }
+                }
+              })
+              .catch(() => {});
+            return cached;
+          }
         }
 
         return fetch(request).then((networkResponse) => {
           if (networkResponse.status === 200 && networkResponse.type === 'basic') {
-            const copy = networkResponse.clone();
-            caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
+            const cType = networkResponse.headers.get('content-type') || '';
+            const isJsRequest = url.pathname.endsWith('.js');
+            const isCssRequest = url.pathname.endsWith('.css');
+            if (!((isJsRequest || isCssRequest) && cType.includes('text/html'))) {
+              const copy = networkResponse.clone();
+              caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
+            }
           }
           return networkResponse;
-        });
+        }).catch(() => new Response("Asset not found offline", { status: 404, statusText: "Not Found" }));
       })
     );
   }

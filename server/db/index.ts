@@ -34,6 +34,7 @@ if (databaseUrl) {
 } else {
   if (process.env.NODE_ENV === 'production') {
     console.error('[NIR DB FATAL] DATABASE_URL is not set. PostgreSQL is the authoritative source of truth. Please configure DATABASE_URL in .env');
+    throw new Error('DATABASE_URL is required in production environment.');
   } else {
     console.warn('[NIR DB WARN] DATABASE_URL is not set. Database operations will return an actionable configuration error until DATABASE_URL is provided.');
   }

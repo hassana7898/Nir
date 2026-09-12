@@ -27,7 +27,7 @@ import { apiRateLimiter, authRateLimiter } from "./server/middleware/rateLimit";
 import { corsMiddleware } from "./server/middleware/cors";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(securityHeaders);
 app.use(corsMiddleware);
@@ -119,7 +119,7 @@ app.all(/^\/api\/.*/, (req, res) => {
 });
 
 // Global Centralized Error Handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+const errorHandler = (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[NIR Server Error]', err);
   const status = err.status || err.statusCode || 500;
   res.status(status).json({
@@ -127,7 +127,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
     error: err?.message || 'خطای غیرمنتظره در سرور رخ داده است.',
     ...(process.env.NODE_ENV !== 'production' ? { stack: err?.stack } : {})
   });
-});
+};
 
 let httpServer: ReturnType<typeof app.listen> | null = null;
 
@@ -168,6 +168,12 @@ async function startServer() {
       res.sendFile(indexPath);
     });
   }
+
+  // 404 for assets
+  app.use('/assets', (req, res) => res.status(404).send('Asset not found'));
+
+  app.use(errorHandler);
+
   httpServer = app.listen(PORT, "0.0.0.0", () => console.log(`Server running on http://0.0.0.0:${PORT}`));
 }
 

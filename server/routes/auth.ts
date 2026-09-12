@@ -13,7 +13,7 @@ router.get('/status', async (_req, res) => {
     const rows = await db.select({ id: users.id }).from(users).limit(1);
     res.json({ setup: rows && rows.length > 0 });
   } catch (error: any) {
-    console.warn('Auth status check fallback:', error?.message || error);
+    // Gracefully handle uninitialized database or missing schema
     res.json({ setup: false });
   }
 });
