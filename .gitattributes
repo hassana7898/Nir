@@ -1,0 +1,6 @@
+# Keep Windows operator scripts with CRLF line endings so the ZIP built on
+# Linux runners behaves correctly on the factory Windows PC.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.txt text eol=crlf
